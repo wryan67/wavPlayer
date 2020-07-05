@@ -1,3 +1,3 @@
 wavPlayer
 ---------
-write pcm directly to gpio pins
+convert pcm to binary duty cycles and write directly to gpio pins
