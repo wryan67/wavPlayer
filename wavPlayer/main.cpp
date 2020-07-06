@@ -15,14 +15,33 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#include <stdint.h>
+#include <wiringPiSPI.h>
 
 #include <chrono>
 #include <ctime>  
 #include "main.h"
 
+#define UBYTE   uint8_t
+#define UWORD   uint16_t
+#define UDOUBLE uint32_t
+
+#define channel_A   0x30
+#define channel_B   0x34
+
+#define DAC_Value_MAX  65535
+
+#define DAC_VREF  3.3
+
+#define DEV_CS_PIN      4
+
+void DAC8532_Out_Voltage(UBYTE Channel, float Voltage);
+
 
 // Output Pins
-int wavPin = 23;                     // gpio pin
+int bckPin     = 27;                    
+int dataPin    = 28;
+int channelPin = 29;
 
 bool debug = false;
 char *wavFileNames[32];
@@ -48,129 +67,29 @@ struct wavHeader
 };
 
 
-volatile unsigned* gpio, * gpset, * gpclr, * gpin, * timer, * intrupt;
-#define GPIO_BASE  0x20200000
-#define TIMER_BASE 0x20003000
-#define INT_BASE 0x2000B000
-
-/***************** SETUP ****************
-Sets up five GPIO pins as described in comments
-Sets timer and interrupt pointers for future use
-Does not disable interrupts
-return 1 = OK
-       0 = error with message print
-************************************/
-
-int setup2() {
-    int memfd;
-    unsigned int timend;
-    void* gpio_map, * timer_map, * int_map;
-
-    memfd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (memfd < 0) {
-        printf("Mem open error\n");
-        return(0);
-    }
-
-    gpio_map = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-        MAP_SHARED, memfd, GPIO_BASE);
-
-    timer_map = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-        MAP_SHARED, memfd, TIMER_BASE);
-
-    int_map = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-        MAP_SHARED, memfd, INT_BASE);
-
-    close(memfd);
-
-    if (gpio_map == MAP_FAILED ||
-        timer_map == MAP_FAILED ||
-        int_map == MAP_FAILED) {
-        printf("Map failed\n");
-        return(0);
-    }
-    // interrupt pointer
-    intrupt = (volatile unsigned*)int_map;
-    // timer pointer
-    timer = (volatile unsigned*)timer_map;
-    ++timer;    // timer lo 4 bytes
-                // timer hi 4 bytes available via *(timer+1)
-
-                // GPIO pointers
-    gpio = (volatile unsigned*)gpio_map;
-    gpset = gpio + 7;     // set bit register offset 28
-    gpclr = gpio + 10;    // clr bit register
-    gpin = gpio + 13;     // read all bits register
-
-        // setup  GPIO 2/3 = inputs    have pull ups on board
-        //        control reg = gpio + 0 = pin/10
-        //        GPIO 2 shift 3 bits by 6 = (pin rem 10) * 3
-        //        GPIO 3 shift 3 bits by 9 = (pin rem 10) * 3
-
-
-    return(1);
+void SPI_WriteByte(uint8_t value) {
+    int read_data;
+    read_data = wiringPiSPIDataRW(0, &value, 1);
+    if (read_data < 0)
+        perror("wiringPiSPIDataRW failed\r\n");
 }
 
-/******************** INTERRUPTS *************
-
-Is this safe?
-Dunno, but it works
-
-interrupts(0)   disable interrupts
-interrupts(1)   re-enable interrupts
-
-return 1 = OK
-       0 = error with message print
-
-Uses intrupt pointer set by setup()
-Does not disable FIQ which seems to
-cause a system crash
-Avoid calling immediately after keyboard input
-or key strokes will not be dealt with properly
-
-*******************************************/
-
-int interrupts(int flag) {
-    static unsigned int sav132 = 0;
-    static unsigned int sav133 = 0;
-    static unsigned int sav134 = 0;
-
-    if (flag == 0)    // disable
-    {
-        if (sav132 != 0) {
-            // Interrupts already disabled so avoid printf
-            return(0);
-        }
-
-        if ((*(intrupt + 128) | *(intrupt + 129) | *(intrupt + 130)) != 0) {
-            printf("Pending interrupts\n");  // may be OK but probably
-            return(0);                       // better to wait for the
-        }                                // pending interrupts to
-                                         // clear
-
-        sav134 = *(intrupt + 134);
-        *(intrupt + 137) = sav134;
-        sav132 = *(intrupt + 132);  // save current interrupts
-        *(intrupt + 135) = sav132;  // disable active interrupts
-        sav133 = *(intrupt + 133);
-        *(intrupt + 136) = sav133;
-    }
-    else            // flag = 1 enable
-    {
-        if (sav132 == 0) {
-            printf("Interrupts not disabled\n");
-            return(0);
-        }
-
-        *(intrupt + 132) = sav132;    // restore saved interrupts
-        *(intrupt + 133) = sav133;
-        *(intrupt + 134) = sav134;
-        sav132 = 0;                 // indicates interrupts enabled
-    }
-    return(1);
+static void Write_DAC8532(UBYTE Channel, UWORD Data) {
+    digitalWrite(DEV_CS_PIN, 1);
+    digitalWrite(DEV_CS_PIN, 0);
+    SPI_WriteByte(Channel);
+    SPI_WriteByte((Data >> 8));
+    SPI_WriteByte((Data & 0xff));
+    digitalWrite(DEV_CS_PIN, 1);
 }
 
-
+void DAC8532_Out_Voltage(UBYTE Channel, double Voltage) {
+    UWORD temp = 0;
+    if ((Voltage <= DAC_VREF) && (Voltage >= 0)) {
+        temp = (UWORD)(Voltage * DAC_Value_MAX / DAC_VREF);
+        Write_DAC8532(Channel, temp);
+    }
+}
 
 bool setup() {
 
@@ -180,13 +99,6 @@ bool setup() {
 	}
 
 
-    if (piHiPri(1)) {
-        printf("high priority failed\n");
-        return 2;
-    }
-
-
-
 	int seed;
 	FILE *fp;
 	fp = fopen("/dev/urandom", "r");
@@ -194,16 +106,22 @@ bool setup() {
 	fclose(fp);
 	srand(seed);
 
-	pinMode(wavPin, OUTPUT);
+	pinMode(bckPin,     OUTPUT);
+    pinMode(dataPin,    OUTPUT);
+    pinMode(channelPin, OUTPUT);
 
 	return true;
 }                                             // end of setup function
 
 
 bool usage() {
-	fprintf(stderr, "usage: wavPlayer [-p gpio] [-d] [-v 0-100]\n");
-	fprintf(stderr, "d = debug\n");
+	fprintf(stderr, "usage: wavPlayer [-b bck] [-c channel] [-d data] [-g] [-v 0-100]\n");
+    fprintf(stderr, "b = bck pin\n");
+    fprintf(stderr, "c = channel pin\n");
+    fprintf(stderr, "d = data pin\n");
+    fprintf(stderr, "g = debug\n");
 	fprintf(stderr, "p = gpio pin\n");
+    fprintf(stderr, "x = external clock");
 	fprintf(stderr, "v = volume\n");
 
 	return false;
@@ -216,18 +134,25 @@ bool commandLineOptions(int argc, char **argv) {
 		return usage();
 	}
 
-	while ((c = getopt(argc, argv, "dv:p:")) != -1)
+
+	while ((c = getopt(argc, argv, "c:b:d:gv:x:")) != -1)
 		switch (c) {
-		case 'd':
+        case 'd':
+            sscanf(optarg, "%d", &dataPin);
+            break;
+        case 'g':
 			debug = true;
 			break;
 		case 'v':
 			sscanf(optarg, "%d", &volume);
 			break;
-		case 'p':
-			sscanf(optarg, "%d", &wavPin);
+        case 'b':
+            sscanf(optarg, "%d", &bckPin);
+            break;
+        case 'c':
+			sscanf(optarg, "%d", &channelPin);
 			break;
-		case '?':
+        case '?':
 			if (optopt == 'm' || optopt == 't')
 				fprintf(stderr, "Option -%c requires an argument.\n", optopt);
 			else if (isprint(optopt))
@@ -253,7 +178,13 @@ bool commandLineOptions(int argc, char **argv) {
 	return true;
 }
 
-
+void wDelay(int delay) {
+    
+    for (int i = 0; i < delay; ++i) {
+        
+    }
+    
+}
 
 void playFile(char *filename) {
 	FILE *wav = fopen(filename, "r");
@@ -270,14 +201,14 @@ void playFile(char *filename) {
 
 	fread(&wavHeader, sizeof(wavHeader), 1, wav);
 
-	double maxAmplitude = pow(2, wavHeader.bitsPerSample - 1);
+	long maxAmplitude = pow(2, wavHeader.bitsPerSample - 1);
 	int segmetSize = (wavHeader.bitsPerSample / 8)*wavHeader.numChannels;
-	int dutyCycle = 1000000 / wavHeader.sampleRate;
 
-	if (debug) {
-
-		printf("output pin        %d\n", wavPin);
-		printf("volume            %d\n", volume);
+	if (debug || 1) {
+		printf("bck               %d\n", bckPin);
+        printf("data              %d\n", dataPin);
+        printf("channel           %d\n", channelPin);
+        printf("volume            %d\n", volume);
 
 		printf("chunk Id          %4.4s\n", wavHeader.chunkID);
 		printf("chunck size       %d\n", wavHeader.chunckSize);
@@ -292,9 +223,8 @@ void playFile(char *filename) {
 		printf("bits per sample   %d\n", wavHeader.bitsPerSample);
 		printf("subChunk2 ID      %4.4s\n", wavHeader.subChunk2ID);
 		printf("subChunk2 size    %d\n", wavHeader.subChunk2Size);
-		printf("maxAmplitude      %d\n", (int)maxAmplitude);
-		printf("segment size      %d\n", segmetSize);
-		printf("duty cycle        %d us\n", dutyCycle); fflush(stdout);
+		printf("maxAmplitude      %ld\n", maxAmplitude);
+        printf("segment size      %d\n", segmetSize);
 	}
 
 	if (wavHeader.bitsPerSample != 16) {
@@ -312,36 +242,35 @@ void playFile(char *filename) {
 	}
 	fclose(wav);
 
-	
-	int k = 0;
-	int lastSample = 0;
+    int delay;
+ 
+    delay = 5500;  // 16k
+  
+
+    int k = 0;
 	for (int32_t i = 0; i < wavHeader.subChunk2Size; i += segmetSize) {
 		int16_t sample;
+
+        // left channel
+        digitalWrite(channelPin, 0);
 		memcpy(&sample, &data[i], wavHeader.bitsPerSample/8);
 
-		double percent =   ((sample+maxAmplitude)/maxAmplitude)/2;
+        double volts = DAC_VREF * ((sample + (maxAmplitude/2)))/maxAmplitude;
 
-		int d1 = dutyCycle * percent;
-		int d2 = dutyCycle - d1;
+        if (debug) {
+            printf("sample=%-6d volts=%9.6f\n", sample, volts);
+        }
+       
+//        DAC8532_Out_Voltage(channel_B, 1.0);
 
-		if (debug) {
-			if (d1 < 0 || d2 < 0 || d1>dutyCycle || d2>dutyCycle || percent < 0 || percent>1) {
-				printf("error, s=%d, p=%6.4f d1=%d d2=%d\n", sample, percent, d1, d2);  fflush(stdout);
-			}
-		}
+        DAC8532_Out_Voltage(channel_B, volts);
+        wDelay(delay);
 
-		digitalWrite(wavPin, 1);
-		delayMicroseconds(d1);
-
-		digitalWrite(wavPin, 0);		
-		delayMicroseconds(d2);
 	}
 }
 
 int main(int argc, char **argv)
 {
-	setuid(0);
-
 	if (!commandLineOptions(argc, argv)) {
 		return 1;
 	}
@@ -350,11 +279,8 @@ int main(int argc, char **argv)
 		printf("setup failed\n");
 		return 1;
 	}
-
-    setup2();
-    printf("waiting for interrupts to clear...\n");
-    delay(2000);
-    interrupts(0);
+    wiringPiSPISetupMode(0, 3200000, 1);
+    pinMode(DEV_CS_PIN, OUTPUT);
 
 	for (int i = 0; i < wavFiles; ++i) {
 		playFile(wavFileNames[i]);
@@ -363,7 +289,6 @@ int main(int argc, char **argv)
 	fflush(stdout);
 	//		delay(4294967295U);   // 3.27 years
 
-    interrupts(1);
 
 	return 0;
 
