@@ -1,6 +1,12 @@
+/*
+*
+*  $ sudo apt install libasound2-dev
+* 
+*  $ aplay -L | grep ^default     << to find your sound card
+*  export AUDIODEV="default:CARD=Device"   << your sound card
+*/
+
 #include <wiringPi.h>
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,15 +20,15 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-
+#include <alsa/asoundlib.h>
 
 #include <chrono>
 #include <ctime>  
 #include "main.h"
 
 
-// Output Pins
-int wavPin = 23;                     // gpio pin
+char* soundCardName;
+snd_pcm_t* soundCardHandle;
 
 bool debug = false;
 char *wavFileNames[32];
@@ -61,129 +67,15 @@ return 1 = OK
        0 = error with message print
 ************************************/
 
-int setup2() {
-    int memfd;
-    unsigned int timend;
-    void* gpio_map, * timer_map, * int_map;
-
-    memfd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (memfd < 0) {
-        printf("Mem open error\n");
-        return(0);
-    }
-
-    gpio_map = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-        MAP_SHARED, memfd, GPIO_BASE);
-
-    timer_map = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-        MAP_SHARED, memfd, TIMER_BASE);
-
-    int_map = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-        MAP_SHARED, memfd, INT_BASE);
-
-    close(memfd);
-
-    if (gpio_map == MAP_FAILED ||
-        timer_map == MAP_FAILED ||
-        int_map == MAP_FAILED) {
-        printf("Map failed\n");
-        return(0);
-    }
-    // interrupt pointer
-    intrupt = (volatile unsigned*)int_map;
-    // timer pointer
-    timer = (volatile unsigned*)timer_map;
-    ++timer;    // timer lo 4 bytes
-                // timer hi 4 bytes available via *(timer+1)
-
-                // GPIO pointers
-    gpio = (volatile unsigned*)gpio_map;
-    gpset = gpio + 7;     // set bit register offset 28
-    gpclr = gpio + 10;    // clr bit register
-    gpin = gpio + 13;     // read all bits register
-
-        // setup  GPIO 2/3 = inputs    have pull ups on board
-        //        control reg = gpio + 0 = pin/10
-        //        GPIO 2 shift 3 bits by 6 = (pin rem 10) * 3
-        //        GPIO 3 shift 3 bits by 9 = (pin rem 10) * 3
-
-
-    return(1);
-}
-
-/******************** INTERRUPTS *************
-
-Is this safe?
-Dunno, but it works
-
-interrupts(0)   disable interrupts
-interrupts(1)   re-enable interrupts
-
-return 1 = OK
-       0 = error with message print
-
-Uses intrupt pointer set by setup()
-Does not disable FIQ which seems to
-cause a system crash
-Avoid calling immediately after keyboard input
-or key strokes will not be dealt with properly
-
-*******************************************/
-
-int interrupts(int flag) {
-    static unsigned int sav132 = 0;
-    static unsigned int sav133 = 0;
-    static unsigned int sav134 = 0;
-
-    if (flag == 0)    // disable
-    {
-        if (sav132 != 0) {
-            // Interrupts already disabled so avoid printf
-            return(0);
-        }
-
-        if ((*(intrupt + 128) | *(intrupt + 129) | *(intrupt + 130)) != 0) {
-            printf("Pending interrupts\n");  // may be OK but probably
-            return(0);                       // better to wait for the
-        }                                // pending interrupts to
-                                         // clear
-
-        sav134 = *(intrupt + 134);
-        *(intrupt + 137) = sav134;
-        sav132 = *(intrupt + 132);  // save current interrupts
-        *(intrupt + 135) = sav132;  // disable active interrupts
-        sav133 = *(intrupt + 133);
-        *(intrupt + 136) = sav133;
-    }
-    else            // flag = 1 enable
-    {
-        if (sav132 == 0) {
-            printf("Interrupts not disabled\n");
-            return(0);
-        }
-
-        *(intrupt + 132) = sav132;    // restore saved interrupts
-        *(intrupt + 133) = sav133;
-        *(intrupt + 134) = sav134;
-        sav132 = 0;                 // indicates interrupts enabled
-    }
-    return(1);
-}
-
 
 
 bool setup() {
+    int err;
 
 	if (int ret = wiringPiSetup()) {
 		fprintf(stderr, "Wiring Pi setup failed, ret=%d\n", ret);
 		return false;
 	}
-
-
-    if (piHiPri(1)) {
-        printf("high priority failed\n");
-        return 2;
-    }
 
 
 
@@ -194,7 +86,16 @@ bool setup() {
 	fclose(fp);
 	srand(seed);
 
-	pinMode(wavPin, OUTPUT);
+
+    soundCardName = getenv("AUDIODEV");
+
+    
+    if ((err = snd_pcm_open(&soundCardHandle, soundCardName, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+        printf("Playback open error: %s\n", snd_strerror(err));
+        exit(EXIT_FAILURE);
+    }
+
+
 
 	return true;
 }                                             // end of setup function
@@ -205,6 +106,8 @@ bool usage() {
 	fprintf(stderr, "d = debug\n");
 	fprintf(stderr, "p = gpio pin\n");
 	fprintf(stderr, "v = volume\n");
+    fprintf(stderr, "Environment variables:\n");
+    fprintf(stderr, "    AUDIODEV='your sound card'\n");
 
 	return false;
 }
@@ -223,9 +126,6 @@ bool commandLineOptions(int argc, char **argv) {
 			break;
 		case 'v':
 			sscanf(optarg, "%d", &volume);
-			break;
-		case 'p':
-			sscanf(optarg, "%d", &wavPin);
 			break;
 		case '?':
 			if (optopt == 'm' || optopt == 't')
@@ -256,6 +156,7 @@ bool commandLineOptions(int argc, char **argv) {
 
 
 void playFile(char *filename) {
+    int err;
 	FILE *wav = fopen(filename, "r");
 	
 	if (wav == NULL) {
@@ -276,7 +177,7 @@ void playFile(char *filename) {
 
 	if (debug) {
 
-		printf("output pin        %d\n", wavPin);
+		printf("output device     %s\n", soundCardName);
 		printf("volume            %d\n", volume);
 
 		printf("chunk Id          %4.4s\n", wavHeader.chunkID);
@@ -302,6 +203,8 @@ void playFile(char *filename) {
 		return;
 	}
 
+    long dataSize = wavHeader.subChunk2Size;
+
 	char *data = (char *)malloc(wavHeader.subChunk2Size);
 
 	long size=fread(data, 1, wavHeader.subChunk2Size, wav);
@@ -312,7 +215,44 @@ void playFile(char *filename) {
 	}
 	fclose(wav);
 
-	
+    if ((err = snd_pcm_set_params(soundCardHandle,
+        SND_PCM_FORMAT_S16_LE,
+        SND_PCM_ACCESS_RW_INTERLEAVED,
+        wavHeader.numChannels,  // channels
+        wavHeader.sampleRate,  // sps
+        1,  // software resample
+        500000)) < 0) {   /* latency 0.5sec */
+
+        printf("Playback open error: %s\n", snd_strerror(err));
+        exit(EXIT_FAILURE);
+    }
+
+    if (debug) fprintf(stderr,"writing data to sound card, %ld bytes\n", dataSize); fflush(stderr);
+
+    snd_pcm_sframes_t frames = snd_pcm_writei(soundCardHandle, data, dataSize/segmetSize);
+
+    fprintf(stderr,"checking overflow\n"); fflush(stderr);
+    if (frames < 0)
+        frames = snd_pcm_recover(soundCardHandle, frames, 0);
+
+    fprintf(stderr,"verifying write status\n"); fflush(stderr);
+    if (frames < 0) {
+        fprintf(stderr,"snd_pcm_writei failed: %s\n", snd_strerror(frames));
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(stderr,"flushing soundCardHandle\n"); fflush(stderr);
+
+    if (frames > 0 && frames < dataSize)
+        fprintf(stderr,"Short write (expected %li, wrote %li)\n", dataSize, frames);
+
+    fprintf(stderr,"flushing soundCardHandle\n"); fflush(stderr);
+
+    err = snd_pcm_drain(soundCardHandle);
+    if (err < 0)
+        fprintf(stderr,"snd_pcm_drain failed: %s\n", snd_strerror(err));
+
+        /*
 	int k = 0;
 	int lastSample = 0;
 	for (int32_t i = 0; i < wavHeader.subChunk2Size; i += segmetSize) {
@@ -336,6 +276,7 @@ void playFile(char *filename) {
 		digitalWrite(wavPin, 0);		
 		delayMicroseconds(d2);
 	}
+*/
 }
 
 int main(int argc, char **argv)
@@ -351,19 +292,20 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-    setup2();
-    printf("waiting for interrupts to clear...\n");
-    delay(2000);
-    interrupts(0);
 
 	for (int i = 0; i < wavFiles; ++i) {
 		playFile(wavFileNames[i]);
 	}
 
-	fflush(stdout);
+    /*
+    while (true) {
+        sleep(1000);
+        fflush(stdout);
+    }
+    */
 	//		delay(4294967295U);   // 3.27 years
 
-    interrupts(1);
+    snd_pcm_close(soundCardHandle);
 
 	return 0;
 
