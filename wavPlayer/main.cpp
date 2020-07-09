@@ -13,7 +13,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <poll.h>
+
 #include <sys/mman.h>
+#include <sys/time.h>
 
 #include <stdint.h>
 #include <wiringPiSPI.h>
@@ -38,16 +41,31 @@
 void DAC8532_Out_Voltage(UBYTE Channel, float Voltage);
 
 
-// Output Pins
-int bckPin     = 27;                    
-int dataPin    = 28;
-int channelPin = 29;
+
+// Input Pins
+int externalClockPin = 25;
+int externalClockBCMPin = 26;
+#define CLOCK_FREQ 65536
+
 
 bool debug = false;
 char *wavFileNames[32];
 int wavFiles = 0;
 int volume = 100;
 
+static volatile bool   isPlaying = false;
+
+static volatile double currentDuration = 999 * 1000; // us
+static volatile double clockTick = 1000000.0 / CLOCK_FREQ; // us
+static volatile long  sampleClockCounter = 0;
+static volatile long  swipe = 0;
+static volatile int   flap = 0;
+static volatile int   playingNote = -1;
+static volatile double dutyCycle;
+static volatile long  wavIndex = -1;
+static volatile int   wavSegmentSize;
+char* wavData;
+long maxAmplitude;
 
 struct wavHeader
 {
@@ -64,7 +82,30 @@ struct wavHeader
 	int16_t  bitsPerSample;
 	char     subChunk2ID[4];
 	int32_t  subChunk2Size;
-};
+} wavHeader;
+
+
+
+pthread_t threadCreate(void* (*method)(void*), const char* description) {
+    pthread_t threadId;
+    int status = pthread_create(&threadId, NULL, method, NULL);
+    if (status != 0) {
+        printf("%s::thread create failed %d--%s\n", description, status, strerror(errno));
+        exit(9);
+    }
+    pthread_detach(threadId);
+    return threadId;
+}
+
+
+unsigned long long currentTimeMillis() {
+    struct timeval currentTime;
+    gettimeofday(&currentTime, NULL);
+
+    return
+        (unsigned long long)(currentTime.tv_sec) * 1000 +
+        (unsigned long long)(currentTime.tv_usec) / 1000;
+}
 
 
 void SPI_WriteByte(uint8_t value) {
@@ -106,9 +147,6 @@ bool setup() {
 	fclose(fp);
 	srand(seed);
 
-	pinMode(bckPin,     OUTPUT);
-    pinMode(dataPin,    OUTPUT);
-    pinMode(channelPin, OUTPUT);
 
 	return true;
 }                                             // end of setup function
@@ -121,8 +159,9 @@ bool usage() {
     fprintf(stderr, "d = data pin\n");
     fprintf(stderr, "g = debug\n");
 	fprintf(stderr, "p = gpio pin\n");
-    fprintf(stderr, "x = external clock");
-	fprintf(stderr, "v = volume\n");
+    fprintf(stderr, "x = external clock pin");
+    fprintf(stderr, "x = external clock BCM pin");
+    fprintf(stderr, "v = volume\n");
 
 	return false;
 }
@@ -135,23 +174,20 @@ bool commandLineOptions(int argc, char **argv) {
 	}
 
 
-	while ((c = getopt(argc, argv, "c:b:d:gv:x:")) != -1)
+	while ((c = getopt(argc, argv, "c:b:d:gv:x:y:")) != -1)
 		switch (c) {
-        case 'd':
-            sscanf(optarg, "%d", &dataPin);
-            break;
         case 'g':
 			debug = true;
 			break;
 		case 'v':
 			sscanf(optarg, "%d", &volume);
 			break;
-        case 'b':
-            sscanf(optarg, "%d", &bckPin);
+        case 'x':
+            sscanf(optarg, "%d", &externalClockPin);
             break;
-        case 'c':
-			sscanf(optarg, "%d", &channelPin);
-			break;
+        case 'y':
+            sscanf(optarg, "%d", &externalClockBCMPin);
+            break;
         case '?':
 			if (optopt == 'm' || optopt == 't')
 				fprintf(stderr, "Option -%c requires an argument.\n", optopt);
@@ -196,18 +232,15 @@ void playFile(char *filename) {
 	printf("Playing %s...\n", filename);
 
 
-	wavHeader wavHeader;
 	
 
 	fread(&wavHeader, sizeof(wavHeader), 1, wav);
 
-	long maxAmplitude = pow(2, wavHeader.bitsPerSample - 1);
-	int segmetSize = (wavHeader.bitsPerSample / 8)*wavHeader.numChannels;
+	maxAmplitude = pow(2, wavHeader.bitsPerSample - 1);
+    wavSegmentSize = (wavHeader.bitsPerSample / 8)*wavHeader.numChannels;
+    dutyCycle = (1000000.0 / wavHeader.sampleRate)+0.5; // us   1mm / SPS
 
 	if (debug || 1) {
-		printf("bck               %d\n", bckPin);
-        printf("data              %d\n", dataPin);
-        printf("channel           %d\n", channelPin);
         printf("volume            %d\n", volume);
 
 		printf("chunk Id          %4.4s\n", wavHeader.chunkID);
@@ -224,49 +257,106 @@ void playFile(char *filename) {
 		printf("subChunk2 ID      %4.4s\n", wavHeader.subChunk2ID);
 		printf("subChunk2 size    %d\n", wavHeader.subChunk2Size);
 		printf("maxAmplitude      %ld\n", maxAmplitude);
-        printf("segment size      %d\n", segmetSize);
-	}
+        printf("segment size      %d\n", wavSegmentSize);
+        printf("clockTick us      %9.4lf\n", clockTick);
+        printf("noteDuration us   %9.4lf\n", dutyCycle);
+    }
 
 	if (wavHeader.bitsPerSample != 16) {
 		printf("bits per sample must be 16, found %d\n", wavHeader.bitsPerSample);
 		return;
 	}
 
-	char *data = (char *)malloc(wavHeader.subChunk2Size);
+	wavData = (char *)malloc(wavHeader.subChunk2Size);
 
-	long size=fread(data, 1, wavHeader.subChunk2Size, wav);
+	long wavSize=fread(wavData, 1, wavHeader.subChunk2Size, wav);
 
-	if (size != wavHeader.subChunk2Size) {
-		printf("Could not read wav data segment, subChunk2Size=%d, but only read %d bytes\n",wavHeader.subChunk2Size,size);
+	if (wavSize != wavHeader.subChunk2Size) {
+		printf("Could not read wav data segment, subChunk2Size=%d, but only read %d bytes\n",wavHeader.subChunk2Size,wavSize);
 		return;
 	}
 	fclose(wav);
 
-    int delay;
- 
-    delay = 5500;  // 16k
-  
+    isPlaying = true;
 
-    int k = 0;
-	for (int32_t i = 0; i < wavHeader.subChunk2Size; i += segmetSize) {
-		int16_t sample;
+}
 
-        // left channel
-        digitalWrite(channelPin, 0);
-		memcpy(&sample, &data[i], wavHeader.bitsPerSample/8);
+static volatile double waveVolts;
 
-        double volts = DAC_VREF * ((sample + (maxAmplitude/2)))/maxAmplitude;
+void* outputVoltage(void*) {
+    DAC8532_Out_Voltage(channel_B, waveVolts);
+    pthread_exit(0);
+}
+
+void play() {
+
+    currentDuration += clockTick;
+    long cd = currentDuration + 0.5;
+
+    if (cd >= dutyCycle) {
+        currentDuration = 0.0;
+        if (wavIndex < 0) {
+            wavIndex = 0;
+        } else {
+            wavIndex += wavSegmentSize;
+        }
+        if (wavIndex >= wavHeader.subChunk2Size) {
+            exit(0);
+        }
+
+        int16_t sample;
+
+        memcpy(&sample, &wavData[wavIndex], wavHeader.bitsPerSample / 8);
+
+        waveVolts = DAC_VREF * (((1.0*sample + maxAmplitude) / maxAmplitude/2)) ;
 
         if (debug) {
-            printf("sample=%-6d volts=%9.6f\n", sample, volts);
+            printf("wavIndex=%d sample=%-6d volts: %9.6f\n", wavIndex, sample, waveVolts);
         }
-       
-//        DAC8532_Out_Voltage(channel_B, 1.0);
+        DAC8532_Out_Voltage(channel_B, waveVolts);
+        //threadCreate(outputVoltage, "outputVoltage");
+    }
+}
 
-        DAC8532_Out_Voltage(channel_B, volts);
-        wDelay(delay);
+void* takeSamplePolling(void*) {
+    struct pollfd pfd;
+    int    fd;
+    char   buf[128];
 
-	}
+    pinMode(externalClockPin, INPUT);
+    sprintf(buf, "gpio export %d in", externalClockBCMPin);
+    system(buf);
+    sprintf(buf, "/sys/class/gpio/gpio%d/value", externalClockBCMPin);
+
+    if ((fd = open(buf, O_RDONLY)) < 0) {
+        fprintf(stderr, "Failed, gpio %d not exported.\n", externalClockBCMPin);
+        exit(1);
+    }
+
+    pfd.fd = fd;
+    pfd.events = POLLPRI;
+
+    char lastValue = 0;
+    int  xread = 0;
+
+    lseek(fd, 0, SEEK_SET);    /* consume any prior interrupt */
+    read(fd, buf, sizeof buf);
+
+    while (true) {
+        //  poll(&pfd, 1, -1);         /* wait for interrupt */
+        lseek(fd, 0, SEEK_SET);    /* consume interrupt */
+        xread = read(fd, buf, sizeof(buf));
+
+        if (xread > 0) {
+            if (buf[0] != lastValue) {
+                lastValue = buf[0];
+                //              if ((0x01&lastValue)==1) play();
+                if (isPlaying) {
+                    play();
+                }
+            }
+        }
+    }
 }
 
 int main(int argc, char **argv)
@@ -279,16 +369,22 @@ int main(int argc, char **argv)
 		printf("setup failed\n");
 		return 1;
 	}
-    wiringPiSPISetupMode(0, 3200000, 1);
+
+    wiringPiSPISetupMode(0, 6200000, 1);
     pinMode(DEV_CS_PIN, OUTPUT);
 
-	for (int i = 0; i < wavFiles; ++i) {
-		playFile(wavFileNames[i]);
-	}
+    piHiPri(99);
+    isPlaying = false;
+    threadCreate(takeSamplePolling, "takeSamplePoling");
 
-	fflush(stdout);
-	//		delay(4294967295U);   // 3.27 years
+	playFile(wavFileNames[0]);
 
+    while (true) {
+        fflush(stdout);
+        fflush(stderr);
+        delay(1000);
+    }
+	delay(4294967295U);   // 3.27 years
 
 	return 0;
 
