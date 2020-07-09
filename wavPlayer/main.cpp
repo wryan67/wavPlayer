@@ -22,32 +22,15 @@
 #include <ctime>  
 #include "main.h"
 
-#define UBYTE   uint8_t
-#define UWORD   uint16_t
-#define UDOUBLE uint32_t
-
-#define channel_A   0x30
-#define channel_B   0x34
-
-#define DAC_Value_MAX  65535
-
-#define DAC_VREF  3.3
-
-#define DEV_CS_PIN      4
-
-void DAC8532_Out_Voltage(UBYTE Channel, float Voltage);
-
-
 // Output Pins
-int bckPin     = 27;                    
-int dataPin    = 28;
-int channelPin = 29;
+int bckPin     = 29;                    
+int dataPin    = 27;
+int lrckPin = 26;
 
 bool debug = false;
 char *wavFileNames[32];
 int wavFiles = 0;
 int volume = 100;
-
 
 struct wavHeader
 {
@@ -67,29 +50,6 @@ struct wavHeader
 };
 
 
-void SPI_WriteByte(uint8_t value) {
-    int read_data;
-    read_data = wiringPiSPIDataRW(0, &value, 1);
-    if (read_data < 0)
-        perror("wiringPiSPIDataRW failed\r\n");
-}
-
-static void Write_DAC8532(UBYTE Channel, UWORD Data) {
-    digitalWrite(DEV_CS_PIN, 1);
-    digitalWrite(DEV_CS_PIN, 0);
-    SPI_WriteByte(Channel);
-    SPI_WriteByte((Data >> 8));
-    SPI_WriteByte((Data & 0xff));
-    digitalWrite(DEV_CS_PIN, 1);
-}
-
-void DAC8532_Out_Voltage(UBYTE Channel, double Voltage) {
-    UWORD temp = 0;
-    if ((Voltage <= DAC_VREF) && (Voltage >= 0)) {
-        temp = (UWORD)(Voltage * DAC_Value_MAX / DAC_VREF);
-        Write_DAC8532(Channel, temp);
-    }
-}
 
 bool setup() {
 
@@ -108,7 +68,7 @@ bool setup() {
 
 	pinMode(bckPin,     OUTPUT);
     pinMode(dataPin,    OUTPUT);
-    pinMode(channelPin, OUTPUT);
+    pinMode(lrckPin, OUTPUT);
 
 	return true;
 }                                             // end of setup function
@@ -150,7 +110,7 @@ bool commandLineOptions(int argc, char **argv) {
             sscanf(optarg, "%d", &bckPin);
             break;
         case 'c':
-			sscanf(optarg, "%d", &channelPin);
+			sscanf(optarg, "%d", &lrckPin);
 			break;
         case '?':
 			if (optopt == 'm' || optopt == 't')
@@ -178,13 +138,6 @@ bool commandLineOptions(int argc, char **argv) {
 	return true;
 }
 
-void wDelay(int delay) {
-    
-    for (int i = 0; i < delay; ++i) {
-        
-    }
-    
-}
 
 void playFile(char *filename) {
 	FILE *wav = fopen(filename, "r");
@@ -207,7 +160,7 @@ void playFile(char *filename) {
 	if (debug || 1) {
 		printf("bck               %d\n", bckPin);
         printf("data              %d\n", dataPin);
-        printf("channel           %d\n", channelPin);
+        printf("channel           %d\n", lrckPin);
         printf("volume            %d\n", volume);
 
 		printf("chunk Id          %4.4s\n", wavHeader.chunkID);
@@ -242,29 +195,45 @@ void playFile(char *filename) {
 	}
 	fclose(wav);
 
-    int delay;
- 
-    delay = 5500;  // 16k
-  
+    digitalWrite(lrckPin, 1);
+    digitalWrite(bckPin, 0);
+    digitalWrite(bckPin, 1);
+
+    digitalWrite(bckPin, 0);
+    digitalWrite(bckPin, 1);
+
 
     int k = 0;
 	for (int32_t i = 0; i < wavHeader.subChunk2Size; i += segmetSize) {
 		int16_t sample;
 
-        // left channel
-        digitalWrite(channelPin, 0);
 		memcpy(&sample, &data[i], wavHeader.bitsPerSample/8);
 
-        double volts = DAC_VREF * ((sample + (maxAmplitude/2)))/maxAmplitude;
+        //float volts = 3.3 * ((float)sample / maxAmplitude);
 
-        if (debug) {
-            printf("sample=%-6d volts=%9.6f\n", sample, volts);
+//        if (debug) {
+//            printf("sample=%-6d volts=%9.6f\n", sample, volts);
+//        }
+
+        int32_t dout = sample;
+        digitalWrite(lrckPin, 0);      
+        for (int i = 0; i < 32; ++i) {
+            int out = 0x01 & dout;
+            dout = dout >> 1;
+            digitalWrite(dataPin, out);
+            digitalWrite(bckPin, 0);
+            digitalWrite(bckPin, 1);
         }
-       
-//        DAC8532_Out_Voltage(channel_B, 1.0);
 
-        DAC8532_Out_Voltage(channel_B, volts);
-        wDelay(delay);
+        dout = sample;
+        digitalWrite(lrckPin, 1 );
+        for (int i = 0; i < 32; ++i) {
+            int out = 0x01 & dout;
+            dout = dout >> 1;
+            digitalWrite(dataPin, out);
+            digitalWrite(bckPin, 0);
+            digitalWrite(bckPin, 1);
+        }
 
 	}
 }
@@ -279,8 +248,6 @@ int main(int argc, char **argv)
 		printf("setup failed\n");
 		return 1;
 	}
-    wiringPiSPISetupMode(0, 3200000, 1);
-    pinMode(DEV_CS_PIN, OUTPUT);
 
 	for (int i = 0; i < wavFiles; ++i) {
 		playFile(wavFileNames[i]);
