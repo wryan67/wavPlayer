@@ -16,6 +16,7 @@ To compile, you will need to install the ALSA dev library:
 After cloning the repository, you'll need to switch to the alsa branch:
 
     $ git clone https://github.com/wryan67/wavPlayer.git
+    $ cd wavPlayer
     $ git checkout alsa
     
 ## Compiling
