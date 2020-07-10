@@ -38,19 +38,23 @@ int volume = 100;
 
 struct wavHeader
 {
-	char     chunkID[4];
-	int32_t  chunckSize;
-	char     format[4];
-	char     subChunk1ID[4];
-	int32_t  subChunk1Size;
-	int16_t  audioFormat;
-	int16_t  numChannels;
-	int32_t  sampleRate;
-	int32_t  byteRate;
-	int16_t  blockAlign;
-	int16_t  bitsPerSample;
-	char     subChunk2ID[4];
-	int32_t  subChunk2Size;
+    char     chunkID[4];      // "RIFF" - literal
+    int32_t  fileSize;        // size of entire file minus 8 bytes
+    char     format[4];       // "WAVE" - big-endian format
+    char     subChunk1ID[4];  // "fmt " - literal
+    int32_t  subChunk1Size;   // size of sub-chunk1 minus 8 bytes
+    int16_t  audioFormat;     // 1=PCM, uncompressed
+    int16_t  numChannels;     // 1=Mono, 2=Stereo, etc.
+    int32_t  sampleRate;      // SPS
+    int32_t  byteRate;        // SampleRate * NumChannels * BitsPerSample/8
+    int16_t  blockAlign;      // NumChannels * BitsPerSample/8 
+                              // BlockAlign is the number of bytes for one sample, including all channels
+    int16_t  bitsPerSample;   // 8, 16, etc.
+};
+
+struct chunkHeader {
+	char     chunkID[4];  // if "data", then it is a data chunk
+	int32_t  chunkSize;   // the size of the data chunk
 };
 
 
@@ -155,65 +159,65 @@ bool commandLineOptions(int argc, char **argv) {
 
 
 
-void playFile(char *filename) {
+void playFile(char* filename) {
     int err;
-	FILE *wav = fopen(filename, "r");
-	
-	if (wav == NULL) {
-		printf("Cannot open %s\n", filename);
-		return;
-	}
-	printf("Playing %s...\n", filename);
+    FILE* wav = fopen(filename, "r");
+
+    if (wav == NULL) {
+        printf("Cannot open %s\n", filename);
+        return;
+    }
+    printf("Playing %s...\n", filename);
 
 
-	wavHeader wavHeader;
-	
+    wavHeader wavHeader;
 
-	fread(&wavHeader, sizeof(wavHeader), 1, wav);
 
-	double maxAmplitude = pow(2, wavHeader.bitsPerSample - 1);
-	int segmetSize = (wavHeader.bitsPerSample / 8)*wavHeader.numChannels;
-	int dutyCycle = 1000000 / wavHeader.sampleRate;
+    fread(&wavHeader, sizeof(wavHeader), 1, wav);
 
-	if (debug) {
+    double maxAmplitude = pow(2, wavHeader.bitsPerSample - 1);
+    int segmetSize = (wavHeader.bitsPerSample / 8) * wavHeader.numChannels;
+    int dutyCycle = 1000000 / wavHeader.sampleRate;
 
-		printf("output device     %s\n", soundCardName);
-		printf("volume            %d\n", volume);
+    if (debug) {
 
-		printf("chunk Id          %4.4s\n", wavHeader.chunkID);
-		printf("chunck size       %d\n", wavHeader.chunckSize);
-		printf("format            %4.4s\n", wavHeader.format);
-		printf("subChunk1 ID      %4.4s\n", wavHeader.subChunk1ID);
-		printf("subChunk1 Size    %d\n", wavHeader.subChunk1Size);
-		printf("audio format      %d\n", wavHeader.audioFormat);
-		printf("num channels      %d\n", wavHeader.numChannels);
-		printf("sample rate       %d\n", wavHeader.sampleRate);
-		printf("byte rate         %d\n", wavHeader.byteRate);
-		printf("block align       %d\n", wavHeader.blockAlign);
-		printf("bits per sample   %d\n", wavHeader.bitsPerSample);
-		printf("subChunk2 ID      %4.4s\n", wavHeader.subChunk2ID);
-		printf("subChunk2 size    %d\n", wavHeader.subChunk2Size);
-		printf("maxAmplitude      %d\n", (int)maxAmplitude);
-		printf("segment size      %d\n", segmetSize);
-		printf("duty cycle        %d us\n", dutyCycle); fflush(stdout);
-	}
+        printf("output device     %s\n", soundCardName);
+        printf("volume            %d\n", volume);
 
-	if (wavHeader.bitsPerSample != 16) {
-		printf("bits per sample must be 16, found %d\n", wavHeader.bitsPerSample);
-		return;
-	}
+        printf("chunk Id          %4.4s\n", wavHeader.chunkID);
+        printf("chunck size       %d\n", wavHeader.fileSize);
+        printf("format            %4.4s\n", wavHeader.format);
+        printf("subChunk1 ID      %4.4s\n", wavHeader.subChunk1ID);
+        printf("subChunk1 Size    %d\n", wavHeader.subChunk1Size);
+        printf("audio format      %d\n", wavHeader.audioFormat);
+        printf("num channels      %d\n", wavHeader.numChannels);
+        printf("sample rate       %d\n", wavHeader.sampleRate);
+        printf("byte rate         %d\n", wavHeader.byteRate);
+        printf("block align       %d\n", wavHeader.blockAlign);
+        printf("bits per sample   %d\n", wavHeader.bitsPerSample);
+        printf("maxAmplitude      %d\n", (int)maxAmplitude);
+        printf("segment size      %d\n", segmetSize);
+        printf("duty cycle        %d us\n", dutyCycle); fflush(stdout);
+    }
 
-    long dataSize = wavHeader.subChunk2Size;
+    if (wavHeader.bitsPerSample != 16) {
+        printf("bits per sample must be 16, found %d\n", wavHeader.bitsPerSample);
+        return;
+    }
+    if (strncmp(wavHeader.chunkID, "RIFF", 4) != 0) {
+        printf("unexpected chunk descriptor, expected 'RIFF', actual='%4.4s'\n", wavHeader.chunkID);
+        return;
+    }
 
-	char *data = (char *)malloc(wavHeader.subChunk2Size);
+    if (strncmp(wavHeader.format, "WAVE", 4) != 0) {
+        printf("unknown file format, expected 'WAVE', actual '%4.4s'\n", wavHeader.format);
+        return;
+    }
+    if (wavHeader.audioFormat != 1) {
+        printf("unknown audio format, expected 1, found %d\n", wavHeader.audioFormat);
+        return;
+    }
 
-	long size=fread(data, 1, wavHeader.subChunk2Size, wav);
-
-	if (size != wavHeader.subChunk2Size) {
-		printf("Could not read wav data segment, subChunk2Size=%d, but only read %d bytes\n",wavHeader.subChunk2Size,size);
-		return;
-	}
-	fclose(wav);
 
     if ((err = snd_pcm_set_params(soundCardHandle,
         SND_PCM_FORMAT_S16_LE,
@@ -227,32 +231,62 @@ void playFile(char *filename) {
         exit(EXIT_FAILURE);
     }
 
-    if (debug) fprintf(stderr,"writing data to sound card, %ld bytes\n", dataSize); fflush(stderr);
 
-    snd_pcm_sframes_t frames = snd_pcm_writei(soundCardHandle, data, dataSize/segmetSize);
+    void *data = NULL;
 
-    fprintf(stderr,"checking overflow\n"); fflush(stderr);
-    if (frames < 0)
-        frames = snd_pcm_recover(soundCardHandle, frames, 0);
+    while (true) {
+        chunkHeader chunkHeader;
 
-    fprintf(stderr,"verifying write status\n"); fflush(stderr);
-    if (frames < 0) {
-        fprintf(stderr,"snd_pcm_writei failed: %s\n", snd_strerror(frames));
-        exit(EXIT_FAILURE);
+        long rs = fread(&chunkHeader, sizeof(chunkHeader), 1, wav);
+
+        if (rs != 1) {
+            break;
+        }
+
+        if (strncmp(chunkHeader.chunkID, "data", 4) != 0) {
+            fseek(wav, chunkHeader.chunkSize, SEEK_CUR);
+            continue;
+        }
+
+        long dataSize = chunkHeader.chunkSize;
+        data = realloc(data, dataSize);
+
+        rs = fread(data, dataSize, 1, wav);
+
+        if (rs != 1) {
+            fprintf(stderr, "unexpected error, %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+        
+        snd_pcm_sframes_t bytesWritten = snd_pcm_writei(soundCardHandle, data, dataSize / segmetSize);
+
+        if (debug) fprintf(stderr, "checking overflow\n"); fflush(stderr);
+        if (bytesWritten < 0) {
+            bytesWritten = snd_pcm_recover(soundCardHandle, bytesWritten, 0);
+        }
+
+        if (debug) fprintf(stderr, "verifying write status\n"); fflush(stderr);
+        if (bytesWritten < 0) {
+            fprintf(stderr, "snd_pcm_writei failed: %s\n", snd_strerror(bytesWritten));
+            exit(EXIT_FAILURE);
+        }
+
+        if (bytesWritten > 0 && bytesWritten < dataSize/segmetSize) {
+            fprintf(stderr, "data write error (expected %li, wrote %li)\n", dataSize, bytesWritten);
+        }
     }
 
-    fprintf(stderr,"flushing soundCardHandle\n"); fflush(stderr);
-
-    if (frames > 0 && frames < dataSize)
-        fprintf(stderr,"Short write (expected %li, wrote %li)\n", dataSize, frames);
-
-    fprintf(stderr,"flushing soundCardHandle\n"); fflush(stderr);
-
+    if (debug) fprintf(stderr, "flushing soundCardHandle\n"); fflush(stderr);
     err = snd_pcm_drain(soundCardHandle);
-    if (err < 0)
-        fprintf(stderr,"snd_pcm_drain failed: %s\n", snd_strerror(err));
+    if (err < 0) {
+        fprintf(stderr, "snd_pcm_drain failed: %s\n", snd_strerror(err));
+    }
 
-        /*
+    free(data);
+    fclose(wav);
+
+    
+    /*
 	int k = 0;
 	int lastSample = 0;
 	for (int32_t i = 0; i < wavHeader.subChunk2Size; i += segmetSize) {
