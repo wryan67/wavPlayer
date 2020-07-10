@@ -1,6 +1,10 @@
 wavPlayer
 ---------
-Read standard .wav file and write PCM data to ALSA driver. 
+Read standard .wav file and write PCM data to ALSA driver.  If you're not familiar with ALSA, it's a very good and mature framework that provides an universal API to access and use sound card devices.  I'm currently using it to play music over an USB sound card on a Raspberry Pi zero.  Here are some links which describe ALSA in more detail. 
+
+* https://en.wikipedia.org/wiki/Advanced_Linux_Sound_Architecture
+* https://www.alsa-project.org/wiki/Main_Page
+* https://www.alsa-project.org/alsa-doc/alsa-lib/
 
 ## Prerquisite
 
