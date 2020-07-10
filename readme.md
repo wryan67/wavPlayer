@@ -20,7 +20,7 @@ After cloning the repository, you'll need to switch to the alsa branch:
     $ git checkout alsa
     
 ## Compiling
-I use Visual Studio, so if you're comfortable with VS, just open the .sln file.   If you're not so confortable with VisualStudio, or you just want to work directly on the RPi, then change folders again to the subdirectory "wavPlayer", and use make to compile the program.
+I use Visual Studio, so if you're comfortable with VS, just open the .sln file.   If you're not so confortable with VisualStudio, or you just want to work directly on the RPi, then change folders again to the subdirectory "wavPlayer", and use make to compile the program.  The rest of the instructions are geared towards working directly on the RPi. 
 
     $ cd wavPlayer
     make
