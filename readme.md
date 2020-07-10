@@ -12,6 +12,12 @@ To compile, you will need to install the ALSA dev library:
 
     $ sudo apt install libasound2-dev
     
+## Download & switching branches
+After cloning the repository, you'll need to switch to the alsa branch:
+
+    $ git clone https://github.com/wryan67/wavPlayer.git
+    $ git checkout alsa
+    
 ## Compiling
 
     make
