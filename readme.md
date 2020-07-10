@@ -54,8 +54,8 @@ I recommend putting the export command in your .bashrc script so that it is avai
 ## Executing
 After you find your sound card and setup the AUDIODEV environment variable, you should be ready to test.
 
-    $ ./wavPlayer -d ~/rr-crossing-bells.48k.wav
-    Playing /home/wryan/rr-crossing-bells.48k.wav...
+    $ ./wavPlayer -d rr-crossing-bells.wav
+    Playing /home/wryan/rr-crossing-bells.wav...
     output device     default:CARD=Device
     volume            100
     chunk Id          RIFF
