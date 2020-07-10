@@ -24,18 +24,30 @@ After cloning the repository, you'll need to switch to the alsa branch:
 
 
 ## Device discovery
-Use aplay to find your default devices:
+Use aplay to find your default devices.  I typically use the grep ^default because aplay -L by itself reads like a dictionary. 
 
     $ aplay -L | grep ^default
     default:CARD=ALSA
     default:CARD=Device
 
+Or use my handy shell script which gives a little more info than the above command, and also provides the audio environment variable needed in the next step:
+
+    $ ./listSoundCards.sh
+    bcm2835 ALSA, bcm2835 ALSA
+      export AUDIODEV='default:CARD=ALSA'
+
+    Generic USB Audio Device, USB Audio
+      export AUDIODEV='default:CARD=Device'
+
+
 ## Environment variable
 
 Setup your audio device like this:
 
-    $ export AUDIODEV="default:CARD=Device"
-    
+    $ export AUDIODEV='default:CARD=Device'
+
+I recommend putting the export command in your .bashrc script so that it is available after each reboot.
+
 ## Executing
 After you find your sound card and setup the AUDIODEV environment variable, you should be ready to test.
 
