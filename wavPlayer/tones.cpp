@@ -187,7 +187,7 @@ bool commandLineOptions(int argc, char **argv) {
 
 wavHeader wavHeader;
 
-void pushHeader(snd_pcm_t* soundCardHandle) {
+void sendHeader(snd_pcm_t* soundCardHandle) {
     int err;
 
     strncpy(wavHeader.chunkID, "RIFF",4);
@@ -398,7 +398,7 @@ void drainSound(snd_pcm_t* soundCardHandle) {
 void *demo1(void*) {
    demo1isRunning=true;
 
-   pushHeader(soundCard1Handle);
+   sendHeader(soundCard1Handle);
    for (int i=0; yankeeDoodle[i]>=0; ++i) {
      playTone(soundCard1Handle, noteHz[yankeeDoodle[i]]);
    }
@@ -410,7 +410,7 @@ void *demo1(void*) {
 void *demo2(void*) {
    demo2isRunning=true;
 
-   pushHeader(soundCard2Handle);
+   sendHeader(soundCard2Handle);
    for (int i=0; yankeeDoodleBase[i]>=0; ++i) {
      playTone(soundCard2Handle, noteHz[yankeeDoodleBase[i]]/2);
    }
