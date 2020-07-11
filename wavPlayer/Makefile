@@ -4,7 +4,7 @@ LIBS=-lm -lpthread -lasound
 
 all: chmod wavPlayer pcm tones
 
-wavPlayer: main.cpp -lasound
+wavPlayer: wavPlayer.cpp -lasound
 	gcc ${CFLAGS} -o wavPlayer main.cpp ${LIBS}
 
 tones: tones.cpp -lasound

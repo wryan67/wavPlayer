@@ -22,7 +22,7 @@
 
 #include <chrono>
 #include <ctime>  
-#include "main.h"
+#include "wavPlayer.h"
 
 
 char* soundCardName;

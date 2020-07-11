@@ -65,12 +65,10 @@
     </RemotePostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
-    <ClCompile Include="pcm.c" />
-    <ClCompile Include="tones.cpp" />
+    <ClCompile Include="wavPlayer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="main.h" />
+    <ClInclude Include="wavPlayer.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="listSoundCards.sh" />

@@ -22,7 +22,7 @@
 
 #include <chrono>
 #include <ctime>  
-#include "main.h"
+#include "wavPlayer.h"
 
 
 snd_pcm_t* soundCard1Handle;
