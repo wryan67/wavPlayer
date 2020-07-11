@@ -77,7 +77,7 @@ bool setup() {
 	int seed;
 	FILE *fp;
 	fp = fopen("/dev/urandom", "r");
-	fread(&seed, sizeof(seed), 1, fp);
+	int b=fread(&seed, sizeof(seed), 1, fp);
 	fclose(fp);
 	srand(seed);
 
@@ -164,7 +164,7 @@ void playFile(char* filename) {
     wavHeader wavHeader;
 
 
-    fread(&wavHeader, sizeof(wavHeader), 1, wav);
+    int b=fread(&wavHeader, sizeof(wavHeader), 1, wav);
 
     double maxAmplitude = pow(2, wavHeader.bitsPerSample - 1);
     int segmetSize = (wavHeader.bitsPerSample / 8) * wavHeader.numChannels;
@@ -306,8 +306,6 @@ void playFile(char* filename) {
 
 int main(int argc, char **argv)
 {
-	setuid(0);
-
 	if (!commandLineOptions(argc, argv)) {
 		return 1;
 	}

@@ -89,7 +89,7 @@ unsigned long long currentTimeMillis() {
         (unsigned long long)(currentTime.tv_usec) / 1000;
 }
 
-pthread_t threadCreate(void *(*method)(void *), char *description) {
+pthread_t threadCreate(void *(*method)(void *), const char *description) {
         pthread_t threadId;
         int status= pthread_create(&threadId, NULL, method, NULL);
         if (status != 0) {
@@ -110,7 +110,7 @@ bool setup() {
    int seed;
    FILE *fp;
    fp = fopen("/dev/urandom", "r");
-   fread(&seed, sizeof(seed), 1, fp);
+   int b=fread(&seed, sizeof(seed), 1, fp);
    fclose(fp);
    srand(seed);
 
@@ -354,7 +354,7 @@ void playTone(snd_pcm_t* soundCardHandle, float freq) {
             long wavIndex=i * wavHeader.bitsPerSample/8 + channel * wavHeader.bitsPerSample/8 ; 
             unsigned char *samples=(unsigned char*)data;
             memcpy(&sample, &samples[wavIndex], wavHeader.bitsPerSample / 8);
-            fprintf(stderr,"i=%d channel=%d wavIndex=%d value=%ld ", i, channel, wavIndex, (long) sample );
+            fprintf(stderr,"i=%d channel=%d wavIndex=%ld value=%ld ", i, channel, wavIndex, (long) sample );
           }
           fprintf(stderr,"\n");
         }
@@ -365,7 +365,7 @@ void playTone(snd_pcm_t* soundCardHandle, float freq) {
     snd_pcm_sframes_t bytesWritten;
       bytesWritten = snd_pcm_writei(soundCardHandle, data, dataSize / segmetSize);
 
-    if (debug) fprintf(stderr, "bytesWritten=%d\n",bytesWritten); fflush(stderr);
+    if (debug) fprintf(stderr, "bytesWritten=%ld\n",bytesWritten); fflush(stderr);
 /*
     if (debug) fprintf(stderr, "checking overflow\n"); fflush(stderr);
     if (bytesWritten < 0) {
@@ -444,7 +444,9 @@ int main(int argc, char **argv)
    soundCard1Handle=openSoundCard(getenv("AUDIODEV"));
    soundCard2Handle=openSoundCard(getenv("AUDIODEV"));
    end = currentTimeMillis();
-   printf("open elapsed=%lld\n",end-start);
+   if (debug) {
+     printf("open elapsed=%lld\n",end-start);
+   }
 
    threadCreate(demo1, "demo1");
    threadCreate(demo2, "demo2");
