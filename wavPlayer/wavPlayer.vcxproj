@@ -66,9 +66,18 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="pcm.c" />
+    <ClCompile Include="tones.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="listSoundCards.sh" />
+    <None Include="Makefile" />
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="rr-crossing-bells.wav" />
   </ItemGroup>
   <ItemDefinitionGroup />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
