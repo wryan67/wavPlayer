@@ -241,10 +241,8 @@ static int write_loop(snd_pcm_t *handle,
     double phase = 0;
     signed short *ptr;
     int err, cptr;
-    printf("write_loop: write only\n");
     long k=0;
     while (1) {
-        printf("write_loop: write only k=%ld\n",k++);
         generate_sine(areas, 0, period_size, &phase);
         ptr = samples;
         cptr = period_size;
