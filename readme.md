@@ -51,6 +51,13 @@ Setup your audio device like this:
 
 I recommend putting the export command in your .bashrc script so that it is available after each reboot.
 
+## Demos
+There are three demos:
+
+* wavPlayer - plays standard .wav files
+* tones - plays sinusoidal wave tones, with threading and sound mixing 
+* pcm - the original example from ALSA Lib.
+
 ## Executing
 After you find your sound card and setup the AUDIODEV environment variable, you should be ready to test.
 
