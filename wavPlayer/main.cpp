@@ -6,7 +6,6 @@
 *  export AUDIODEV="default:CARD=Device"   << your sound card
 */
 
-#include <wiringPi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +13,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <lcd.h>
 #include <math.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -75,13 +73,6 @@ return 1 = OK
 
 bool setup() {
     int err;
-
-	if (int ret = wiringPiSetup()) {
-		fprintf(stderr, "Wiring Pi setup failed, ret=%d\n", ret);
-		return false;
-	}
-
-
 
 	int seed;
 	FILE *fp;
