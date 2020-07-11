@@ -5,7 +5,7 @@ LIBS=-lm -lpthread -lasound
 all: chmod wavPlayer pcm tones
 
 wavPlayer: wavPlayer.cpp -lasound
-	gcc ${CFLAGS} -o wavPlayer main.cpp ${LIBS}
+	gcc ${CFLAGS} -o wavPlayer wavPlayer.cpp ${LIBS}
 
 tones: tones.cpp -lasound
 	gcc ${CFLAGS} -o tones tones.cpp ${LIBS}
@@ -16,4 +16,4 @@ pcm: pcm.c -lasound
 chmod:
 	@chmod 755 listSoundCards.sh
 clean:
-	rm -f wavPlayer
+	rm -f wavPlayer tones pcm
