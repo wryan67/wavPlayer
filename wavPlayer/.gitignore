@@ -2,3 +2,4 @@ wavPlayer
 pcm
 tones
 bin/*
+lib/*

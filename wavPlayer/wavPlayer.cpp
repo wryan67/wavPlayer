@@ -22,7 +22,7 @@
 
 #include <chrono>
 #include <ctime>  
-#include "sound.h"
+#include "Sound.h"
 
 
 char* soundCardName;
@@ -110,7 +110,6 @@ bool commandLineOptions(int argc, char **argv) {
 
 
 
-}
 
 int main(int argc, char **argv)
 {
@@ -125,7 +124,7 @@ int main(int argc, char **argv)
 
 
 	for (int i = 0; i < wavFiles; ++i) {
-		playWavFile(wavFileNames[i], 100.0kkk);
+		playWavFile(wavFileNames[i], 100.0);
 	}
 
 

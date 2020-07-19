@@ -102,7 +102,6 @@ void printWavConfig(wavFormatType &wavConfig) {
 void _playWavFile(snd_pcm_t* soundCardHandle, char* filename, float volume) {
     fprintf(stderr,"Playing %s ...\n",filename); fflush(stdout);
 
-    int err;
     FILE* wav = fopen(filename, "r");
 
     if (wav == NULL) {
@@ -203,12 +202,16 @@ void _playWavFile(snd_pcm_t* soundCardHandle, char* filename, float volume) {
 
         snd_pcm_sframes_t bytesWritten = snd_pcm_writei(soundCardHandle, data, dataSize / segmetSize);
 
-        if (debug) fprintf(stderr, "checking overflow\n"); fflush(stderr);
+        if (debug) {
+           fprintf(stderr, "checking overflow\n"); fflush(stderr);
+        }
         if (bytesWritten < 0) {
             bytesWritten = snd_pcm_recover(soundCardHandle, bytesWritten, 0);
         }
 
-        if (debug) fprintf(stderr, "verifying write status\n"); fflush(stderr);
+        if (debug) {
+            fprintf(stderr, "verifying write status\n"); fflush(stderr);
+        }
         if (bytesWritten < 0) {
             fprintf(stderr, "snd_pcm_writei failed: %s\n", snd_strerror(bytesWritten));
             exit(EXIT_FAILURE);
@@ -219,7 +222,9 @@ void _playWavFile(snd_pcm_t* soundCardHandle, char* filename, float volume) {
         }
     }
 
-    if (debug) fprintf(stderr, "flushing soundCardHandle\n"); fflush(stderr);
+    if (debug) {
+        fprintf(stderr, "flushing soundCardHandle\n"); fflush(stderr);
+    }
 
     free(data);
     fclose(wav);
