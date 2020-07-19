@@ -61,25 +61,27 @@ There are three demos:
 ## Executing
 After you find your sound card and setup the AUDIODEV environment variable, you should be ready to test.
 
-    $ ./wavPlayer -d rr-crossing-bells.wav
-    Playing /home/wryan/rr-crossing-bells.wav...
-    output device     default:CARD=Device
-    volume            100
-    chunk Id          RIFF
-    chunck size       2761084
-    format            WAVE
-    subChunk1 ID      fmt
-    subChunk1 Size    16
+    $ ./bin/tones
+    { playes a tune }
+    
+    $$ bin/wavPlayer trolleyBell-east.wav
+    Playing trolleyBell-west.wav ...
+
+    $$ bin/wavPlayer trolleyBell-west.wav
+    Playing trolleyBell-west.wav ...
+
+
+    $ ./bin/wavPlayer -d rr-crossing-bells.wav
     audio format      1
     num channels      1
     sample rate       48000
     byte rate         96000
     block align       2
     bits per sample   16
-    maxAmplitude      32768
     segment size      2
-    duty cycle        20 us
     checking overflow
     verifying write status
     flushing soundCardHandle
+
+
 
