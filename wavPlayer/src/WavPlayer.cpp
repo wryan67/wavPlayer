@@ -228,5 +228,4 @@ void _playWavFile(snd_pcm_t* soundCardHandle, char* filename, float volume) {
 
     free(data);
     fclose(wav);
-    free(filename);
 }
