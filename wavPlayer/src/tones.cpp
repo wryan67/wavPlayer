@@ -23,7 +23,8 @@ void *generate_sine(wavFormatType& wavConfig, double duration, double& phase, fl
 
 
 
-        int16_t amplitude = (sin(phase)<0?-1:1) * maxVolume;
+        int16_t amplitude = sin(phase) * maxVolume;
+//      int16_t amplitude = (sin(phase)<0?-1:1) * maxVolume;
 
         for (int channel = 0; channel < wavConfig.channels; channel++) {
             

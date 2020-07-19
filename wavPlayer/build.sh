@@ -34,7 +34,7 @@ C="gcc"
 CC="g++"
 CFLAGS="-c -O2 -std=c11 -Wall"
 CCFLAGS="-c -O2 -std=gnu++11 -Wall"
-LIBRARIES="-lwiringPi -lm -lasound -lpthread"
+LIBRARIES="-lm -lasound -lpthread"
 #;wiringPiDev;wiringPiPca9685;;wiringPiADS1115rpi;wiringPiPCA9635rpi;
 LDFLAGS="-Wl,--no-undefined -Wl,-z,now"
 INCLUDES=`find $SRC -type d | awk '{printf("-I%s ",$0);}'`
@@ -128,8 +128,8 @@ executable() {
 
   echo linking exe
 
-  userEcho $CC $INCLUDES $LIBRARIES $LDFLAGS wavPlayer.cpp  -o $BIN/wavPlayer lib/lib${LIBNAME}.a
-  userEcho $CC $INCLUDES $LIBRARIES $LDFLAGS tones.cpp  -o $BIN/tones lib/lib${LIBNAME}.a
+  userEcho $CC $INCLUDES $LDFLAGS wavPlayer.cpp  -o $BIN/wavPlayer lib/lib${LIBNAME}.a $LIBRARIES
+  userEcho $CC $INCLUDES $LDFLAGS tones.cpp  -o $BIN/tones lib/lib${LIBNAME}.a $LIBRARIES
 }
 
 #:###################:#
