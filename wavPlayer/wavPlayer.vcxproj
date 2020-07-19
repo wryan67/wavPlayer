@@ -68,16 +68,17 @@
     <ClCompile Include="wavPlayer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="wavPlayer.h" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="listSoundCards.sh" />
     <None Include="Makefile" />
   </ItemGroup>
   <ItemGroup>
     <Media Include="rr-crossing-bells.wav" />
   </ItemGroup>
-  <ItemDefinitionGroup />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>
