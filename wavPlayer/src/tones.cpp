@@ -1,5 +1,4 @@
 #include "Sound.h"
-#include "Common.h"
 
 void *generate_sine(wavFormatType& wavConfig, double duration, double& phase, float freq) {
 

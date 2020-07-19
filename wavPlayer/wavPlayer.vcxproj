@@ -65,14 +65,21 @@
     </RemotePostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Sound.cpp" />
+    <ClCompile Include="src\tones.cpp" />
+    <ClCompile Include="src\WavPlayer.cpp" />
     <ClCompile Include="wavPlayer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include=".gitignore" />
     <None Include="listSoundCards.sh" />
     <None Include="Makefile" />
   </ItemGroup>
   <ItemGroup>
     <Media Include="rr-crossing-bells.wav" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Sound.h" />
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <ClCompile>
