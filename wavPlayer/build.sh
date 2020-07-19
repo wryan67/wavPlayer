@@ -129,6 +129,7 @@ executable() {
   echo linking exe
 
   userEcho $CC $INCLUDES $LIBRARIES $LDFLAGS wavPlayer.cpp  -o $BIN/wavPlayer lib/lib${LIBNAME}.a
+  userEcho $CC $INCLUDES $LIBRARIES $LDFLAGS tones.cpp  -o $BIN/tones lib/lib${LIBNAME}.a
 }
 
 #:###################:#
